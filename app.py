@@ -30,34 +30,41 @@ def engineer_features(df):
 
     df = df.copy()
 
-    # Keep only numeric columns for energy calculations
-    energy_df = df.select_dtypes(include=["int64", "float64"])
+    # Convert everything possible to numeric, force errors to NaN
+    df_numeric = df.apply(pd.to_numeric, errors="coerce")
 
-    # Fill missing values
-    energy_df = energy_df.fillna(energy_df.median())
+    # Drop columns that are completely NaN
+    df_numeric = df_numeric.dropna(axis=1, how="all")
+
+    # Fill remaining NaNs with column median
+    df_numeric = df_numeric.fillna(df_numeric.median())
+
+    # If user uploads empty or invalid file
+    if df_numeric.shape[1] == 0:
+        raise ValueError("No numeric energy columns found.")
 
     # Statistical features
-    energy_df["energy_mean"] = energy_df.mean(axis=1)
-    energy_df["energy_std"] = energy_df.std(axis=1)
-    energy_df["energy_max"] = energy_df.max(axis=1)
-    energy_df["energy_min"] = energy_df.min(axis=1)
+    df_numeric["energy_mean"] = df_numeric.mean(axis=1)
+    df_numeric["energy_std"] = df_numeric.std(axis=1)
+    df_numeric["energy_max"] = df_numeric.max(axis=1)
+    df_numeric["energy_min"] = df_numeric.min(axis=1)
 
     # Behavioural features
-    energy_df["range_ratio"] = (
-        energy_df["energy_max"] - energy_df["energy_min"]
-    ) / (energy_df["energy_mean"] + 1e-6)
+    df_numeric["range_ratio"] = (
+        df_numeric["energy_max"] - df_numeric["energy_min"]
+    ) / (df_numeric["energy_mean"] + 1e-6)
 
-    energy_df["sudden_drop"] = (
-        energy_df.diff(axis=1).min(axis=1) < -0.3
+    df_numeric["sudden_drop"] = (
+        df_numeric.diff(axis=1).min(axis=1) < -0.3
     ).astype(int)
 
-    energy_df["low_usage_flag"] = (
-        energy_df["energy_mean"] < energy_df["energy_mean"].median()
+    df_numeric["low_usage_flag"] = (
+        df_numeric["energy_mean"] < df_numeric["energy_mean"].median()
     ).astype(int)
 
     # Clean column names
-    energy_df.columns = (
-        energy_df.columns.astype(str)
+    df_numeric.columns = (
+        df_numeric.columns.astype(str)
         .str.replace("[", "_", regex=False)
         .str.replace("]", "_", regex=False)
         .str.replace("<", "_", regex=False)
@@ -67,12 +74,13 @@ def engineer_features(df):
 
     # Align with model features
     for col in MODEL_FEATURES:
-        if col not in energy_df.columns:
-            energy_df[col] = 0
+        if col not in df_numeric.columns:
+            df_numeric[col] = 0
 
-    energy_df = energy_df[MODEL_FEATURES]
+    df_numeric = df_numeric[MODEL_FEATURES]
 
-    return energy_df
+    return df_numeric
+
 
 
 # ===============================
@@ -218,5 +226,6 @@ Decision based on threshold **{threshold:.2f}**
 
         except Exception as e:
             st.warning("Please enter valid numeric values separated by commas.")
+
 
 
