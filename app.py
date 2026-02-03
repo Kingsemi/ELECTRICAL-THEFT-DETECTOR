@@ -1,0 +1,207 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+st.set_page_config(
+    page_title="Electricity Theft Detection",
+    layout="wide"
+)
+
+# ===============================
+# Load artifacts
+# ===============================
+
+@st.cache_resource
+def load_artifacts():
+    model = joblib.load("electricity_theft_xgb_model.pkl")
+    features = joblib.load("model_features.pkl")
+    return model, features
+
+model, MODEL_FEATURES = load_artifacts()
+
+# ===============================
+# Feature Engineering
+# ===============================
+
+def engineer_features(df):
+
+    df = df.copy()
+
+    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
+    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+
+    df["energy_mean"] = df.mean(axis=1)
+    df["energy_std"] = df.std(axis=1)
+    df["energy_max"] = df.max(axis=1)
+    df["energy_min"] = df.min(axis=1)
+
+    df["range_ratio"] = (df["energy_max"] - df["energy_min"]) / (df["energy_mean"] + 1e-6)
+
+    df["sudden_drop"] = (df.diff(axis=1).min(axis=1) < -0.3).astype(int)
+
+    df["low_usage_flag"] = (df["energy_mean"] < df["energy_mean"].median()).astype(int)
+
+    df.columns = (
+        df.columns.astype(str)
+        .str.replace("[", "_", regex=False)
+        .str.replace("]", "_", regex=False)
+        .str.replace("<", "_", regex=False)
+        .str.replace(">", "_", regex=False)
+        .str.replace(" ", "_", regex=False)
+    )
+
+    for col in MODEL_FEATURES:
+        if col not in df.columns:
+            df[col] = 0
+
+    df = df[MODEL_FEATURES]
+
+    return df
+
+# ===============================
+# Sidebar Controls
+# ===============================
+
+st.sidebar.title("⚙️ Controls")
+
+mode = st.sidebar.radio(
+    "Prediction Mode",
+    ["📁 Batch CSV Upload", "👤 Single Customer"]
+)
+
+threshold = st.sidebar.slider(
+    "Theft Probability Threshold",
+    min_value=0.1,
+    max_value=0.9,
+    value=0.5,
+    step=0.05
+)
+
+st.sidebar.markdown(f"""
+Prediction rule:
+
+Probability ≥ **{threshold:.2f}** → Theft  
+Probability < **{threshold:.2f}** → Normal
+""")
+
+# ===============================
+# Main UI
+# ===============================
+
+st.title("⚡ Electricity Theft Detection System")
+
+# =========================================================
+# BATCH MODE
+# =========================================================
+
+if mode == "📁 Batch CSV Upload":
+
+    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
+
+    if uploaded_file:
+
+        raw_df = pd.read_csv(uploaded_file)
+
+        st.subheader("📄 Raw Data Preview")
+        st.dataframe(raw_df.head())
+
+        X = engineer_features(raw_df)
+
+        probs = model.predict_proba(X)[:, 1]
+        preds = (probs >= threshold).astype(int)
+
+        result_df = raw_df.copy()
+        result_df["Theft_Probability"] = probs
+        result_df["Theft_Prediction"] = np.where(preds == 1, "Theft", "Normal")
+
+        # ===============================
+        # KPIs
+        # ===============================
+
+        total = len(result_df)
+        thefts = (preds == 1).sum()
+        normals = total - thefts
+
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Customers", total)
+        col2.metric("Suspected Theft", thefts)
+        col3.metric("Normal", normals)
+
+        # ===============================
+        # Charts
+        # ===============================
+
+        st.subheader("📊 Prediction Distribution")
+        fig1, ax1 = plt.subplots()
+        sns.countplot(x=result_df["Theft_Prediction"], ax=ax1)
+        st.pyplot(fig1)
+
+        st.subheader("📈 Theft Probability Distribution")
+        fig2, ax2 = plt.subplots()
+        sns.histplot(probs, bins=30, kde=True, ax=ax2)
+        st.pyplot(fig2)
+
+        # ===============================
+        # Results
+        # ===============================
+
+        st.subheader("✅ Prediction Results")
+        st.dataframe(result_df)
+
+        csv = result_df.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "⬇️ Download Predictions",
+            csv,
+            "theft_predictions.csv",
+            "text/csv"
+        )
+
+    else:
+        st.info("Upload a CSV file to begin.")
+
+# =========================================================
+# SINGLE CUSTOMER MODE
+# =========================================================
+
+else:
+
+    st.subheader("👤 Single Customer Energy Input")
+
+    st.markdown("Enter consumption values (example: monthly or daily readings).")
+
+    values = st.text_area(
+        "Energy readings (comma separated)",
+        placeholder="120,118,130,125,90,88,140"
+    )
+
+    if st.button("Predict Theft"):
+
+        try:
+            nums = [float(x.strip()) for x in values.split(",")]
+
+            single_df = pd.DataFrame([nums])
+
+            X_single = engineer_features(single_df)
+
+            prob = model.predict_proba(X_single)[0, 1]
+
+            pred = "Theft" if prob >= threshold else "Normal"
+
+            st.metric("Theft Probability", f"{prob:.2%}")
+
+            if pred == "Theft":
+                st.error("🚨 Prediction: POTENTIAL THEFT")
+            else:
+                st.success("✅ Prediction: NORMAL USAGE")
+
+            st.markdown(f"""
+Decision based on threshold **{threshold:.2f}**
+""")
+
+        except Exception as e:
+            st.warning("Please enter valid numeric values separated by commas.")
+S
