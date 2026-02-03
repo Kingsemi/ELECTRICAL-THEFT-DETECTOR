@@ -186,31 +186,50 @@ if mode == "📁 Batch CSV Upload":
         st.info("Upload a CSV file to begin.")
 
 # =========================================================
-# SINGLE CUSTOMER MODE
+# SINGLE CUSTOMER MODE (RESTRUCTURED UI)
 # =========================================================
 
 else:
 
     st.subheader("👤 Single Customer Energy Input")
 
-    st.markdown("Enter consumption values (example: monthly or daily readings).")
+    st.markdown("Enter energy readings below (you can add or remove rows).")
 
-    values = st.text_area(
-        "Energy readings (comma separated)",
-        placeholder="120,118,130,125,90,88,140"
+    # Initialize session state
+    if "energy_rows" not in st.session_state:
+        st.session_state.energy_rows = 7
+
+    col_add, col_remove = st.columns(2)
+
+    if col_add.button("➕ Add Reading"):
+        st.session_state.energy_rows += 1
+
+    if col_remove.button("➖ Remove Reading"):
+        if st.session_state.energy_rows > 1:
+            st.session_state.energy_rows -= 1
+
+    # Create editable table
+    energy_values = []
+
+   for i in range(st.session_state.energy_rows):
+    val = st.number_input(
+        label=f"Month {i+1} Energy Consumption (kWh)",
+        min_value=0.0,
+        step=1.0,
+        key=f"energy_{i}"
     )
+    energy_values.append(val)
 
-    if st.button("Predict Theft"):
+
+    single_df = pd.DataFrame([energy_values])
+
+    if st.button("🔮 Predict Theft"):
 
         try:
-            nums = [float(x.strip()) for x in values.split(",")]
-
-            single_df = pd.DataFrame([nums])
 
             X_single = engineer_features(single_df)
 
             prob = model.predict_proba(X_single)[0, 1]
-
             pred = "Theft" if prob >= threshold else "Normal"
 
             st.metric("Theft Probability", f"{prob:.2%}")
@@ -220,12 +239,10 @@ else:
             else:
                 st.success("✅ Prediction: NORMAL USAGE")
 
-            st.markdown(f"""
-Decision based on threshold **{threshold:.2f}**
-""")
+            st.caption(f"Decision threshold: {threshold:.2f}")
 
         except Exception as e:
-            st.warning("Please enter valid numeric values separated by commas.")
+            st.warning("Please enter valid numeric readings.")
 
 
 
