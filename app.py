@@ -30,22 +30,34 @@ def engineer_features(df):
 
     df = df.copy()
 
-    numeric_cols = df.select_dtypes(include=["int64", "float64"]).columns
-    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
+    # Keep only numeric columns for energy calculations
+    energy_df = df.select_dtypes(include=["int64", "float64"])
 
-    df["energy_mean"] = df.mean(axis=1)
-    df["energy_std"] = df.std(axis=1)
-    df["energy_max"] = df.max(axis=1)
-    df["energy_min"] = df.min(axis=1)
+    # Fill missing values
+    energy_df = energy_df.fillna(energy_df.median())
 
-    df["range_ratio"] = (df["energy_max"] - df["energy_min"]) / (df["energy_mean"] + 1e-6)
+    # Statistical features
+    energy_df["energy_mean"] = energy_df.mean(axis=1)
+    energy_df["energy_std"] = energy_df.std(axis=1)
+    energy_df["energy_max"] = energy_df.max(axis=1)
+    energy_df["energy_min"] = energy_df.min(axis=1)
 
-    df["sudden_drop"] = (df.diff(axis=1).min(axis=1) < -0.3).astype(int)
+    # Behavioural features
+    energy_df["range_ratio"] = (
+        energy_df["energy_max"] - energy_df["energy_min"]
+    ) / (energy_df["energy_mean"] + 1e-6)
 
-    df["low_usage_flag"] = (df["energy_mean"] < df["energy_mean"].median()).astype(int)
+    energy_df["sudden_drop"] = (
+        energy_df.diff(axis=1).min(axis=1) < -0.3
+    ).astype(int)
 
-    df.columns = (
-        df.columns.astype(str)
+    energy_df["low_usage_flag"] = (
+        energy_df["energy_mean"] < energy_df["energy_mean"].median()
+    ).astype(int)
+
+    # Clean column names
+    energy_df.columns = (
+        energy_df.columns.astype(str)
         .str.replace("[", "_", regex=False)
         .str.replace("]", "_", regex=False)
         .str.replace("<", "_", regex=False)
@@ -53,13 +65,15 @@ def engineer_features(df):
         .str.replace(" ", "_", regex=False)
     )
 
+    # Align with model features
     for col in MODEL_FEATURES:
-        if col not in df.columns:
-            df[col] = 0
+        if col not in energy_df.columns:
+            energy_df[col] = 0
 
-    df = df[MODEL_FEATURES]
+    energy_df = energy_df[MODEL_FEATURES]
 
-    return df
+    return energy_df
+
 
 # ===============================
 # Sidebar Controls
@@ -204,4 +218,5 @@ Decision based on threshold **{threshold:.2f}**
 
         except Exception as e:
             st.warning("Please enter valid numeric values separated by commas.")
+
 
