@@ -188,6 +188,9 @@ if mode == "📁 Batch CSV Upload":
 # =========================================================
 # SINGLE CUSTOMER MODE (RESTRUCTURED UI)
 # =========================================================
+# =========================================================
+# SINGLE CUSTOMER MODE (RESTRUCTURED UI)
+# =========================================================
 
 else:
 
@@ -195,7 +198,6 @@ else:
 
     st.markdown("Enter energy readings below (you can add or remove rows).")
 
-    # Initialize session state
     if "energy_rows" not in st.session_state:
         st.session_state.energy_rows = 7
 
@@ -208,18 +210,16 @@ else:
         if st.session_state.energy_rows > 1:
             st.session_state.energy_rows -= 1
 
-    # Create editable table
     energy_values = []
 
-   for i in range(st.session_state.energy_rows):
-    val = st.number_input(
-        label=f"Month {i+1} Energy Consumption (kWh)",
-        min_value=0.0,
-        step=1.0,
-        key=f"energy_{i}"
-    )
-    energy_values.append(val)
-
+    for i in range(st.session_state.energy_rows):
+        val = st.number_input(
+            label=f"Month {i+1} Energy Consumption (kWh)",
+            min_value=0.0,
+            step=1.0,
+            key=f"energy_{i}"
+        )
+        energy_values.append(val)
 
     single_df = pd.DataFrame([energy_values])
 
@@ -241,8 +241,5 @@ else:
 
             st.caption(f"Decision threshold: {threshold:.2f}")
 
-        except Exception as e:
+        except Exception:
             st.warning("Please enter valid numeric readings.")
-
-
-
